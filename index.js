@@ -4,59 +4,56 @@ const path = require('path');
 const bodyParser = require('body-parser');
 
 const app = express();
-
-// Configurar o middleware para analisar o corpo das requisições
 app.use(bodyParser.json());
-app.use(express.static(path.join(__dirname, 'public'))); // Servir arquivos estáticos
-
-// Caminho do arquivo para armazenar as mensagens
 const MESSAGES_FILE = path.join(__dirname, 'messages.json');
 
 // Rota principal para exibir o fórum
 app.get('/', (req, res) => {
-    res.send(`
-        <h1>Fórum Simples</h1>
-        <form id="messageForm">
-            <input type="text" name="name" placeholder="Seu nome" required />
-            <textarea name="message" placeholder="Sua mensagem" required></textarea>
-            <button type="submit">Enviar</button>
-        </form>
-        <div id="messages"></div>
-        <script>
-            // Exibir mensagens
-            async function loadMessages() {
-                const res = await fetch('/messages');
-                const data = await res.json();
-                const messagesDiv = document.getElementById('messages');
-                messagesDiv.innerHTML = data.map(msg => 
-                    \`<p><strong>\${msg.name}:</strong> \${msg.message}</p>\`
-                ).join('');
-            }
-            
-            // Enviar mensagens
-            document.getElementById('messageForm').addEventListener('submit', async (e) => {
-                e.preventDefault();
-                const formData = new FormData(e.target);
-                const data = Object.fromEntries(formData);
-                await fetch('/messages', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data)
-                });
-                e.target.reset();
-                loadMessages();
-            });
+    // Ler as mensagens do arquivo
+    fs.readFile(MESSAGES_FILE, 'utf8', (err, data) => {
+        const messages = err && err.code === 'ENOENT' ? [] : JSON.parse(data || '[]');
 
-            loadMessages();
-        </script>
-    `);
+        // Gerar a página HTML com as mensagens
+        const messageHTML = messages.map(msg => 
+            `<p><strong>${msg.name}:</strong> ${msg.message}</p>`
+        ).join('');
+
+        res.send(`
+            <h1>Fórum Simples</h1>
+            <form id="messageForm">
+                <input type="text" name="name" placeholder="Seu nome" required />
+                <textarea name="message" placeholder="Sua mensagem" required></textarea>
+                <button type="submit">Enviar</button>
+            </form>
+            <div id="messages">${messageHTML}</div>
+            <script>
+                // Enviar mensagens
+                document.getElementById('messageForm').addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const formData = new FormData(e.target);
+                    const data = Object.fromEntries(formData);
+                    await fetch('/messages', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(data)
+                    });
+                    e.target.reset();
+                    // Atualizar mensagens sem recarregar a página
+                    const res = await fetch('/messages');
+                    const messages = await res.json();
+                    document.getElementById('messages').innerHTML = messages.map(msg => 
+                        \`<p><strong>\${msg.name}:</strong> \${msg.message}</p>\`
+                    ).join('');
+                });
+            </script>
+        `);
+    });
 });
 
-// Rota para obter mensagens
+// Rota para obter mensagens (ainda pode ser útil para o script)
 app.get('/messages', (req, res) => {
     fs.readFile(MESSAGES_FILE, 'utf8', (err, data) => {
         if (err) {
-            // Caso o arquivo não exista, retorna uma lista vazia
             if (err.code === 'ENOENT') return res.json([]);
             return res.status(500).json({ error: 'Erro ao ler as mensagens' });
         }
